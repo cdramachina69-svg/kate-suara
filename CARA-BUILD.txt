@@ -1,0 +1,55 @@
+KATE SUARA - APLIKASI ANDROID (WebView)
+=======================================
+
+Aplikasi ini memuat halaman https://ruangaplikasi.my.id/voice/ Anda.
+Pengenalan suara dan pembukaan aplikasi dilakukan oleh Android sendiri,
+sehingga tidak terkena aturan "harus disentuh dulu" milik Chrome.
+
+LANGKAH 0 (WAJIB)
+-----------------
+Upload index.php VERSI TERBARU (yang dikirim bersama proyek ini) ke folder
+/voice/ di hosting. Aplikasi Android hanya "jendela" ke halaman itu, jadi
+tanpa pembaruan itu suara dan pembukaan aplikasi tidak akan bekerja.
+
+CARA MEMBUAT FILE APK
+---------------------
+1. Pasang Android Studio (gratis) di komputer: developer.android.com/studio
+2. Ekstrak zip ini, lalu di Android Studio pilih File > Open dan pilih folder
+   "suara-android" (folder yang berisi settings.gradle.kts).
+3. Tunggu "Gradle sync" selesai (pertama kali mengunduh beberapa file, butuh
+   internet dan beberapa menit). Kalau diminta, setujui pemasangan Android SDK 34.
+4. Menu: Build > Build Bundle(s) / APK(s) > Build APK(s).
+5. Klik "locate" pada notifikasi di pojok kanan bawah. Filenya bernama
+   app-debug.apk. Kirim ke HP, lalu pasang (izinkan "pasang dari sumber tidak
+   dikenal" untuk aplikasi File/Chrome bila diminta).
+
+PENGGUNAAN
+----------
+- Buka aplikasi "Kate Suara". Izinkan mikrofon saat diminta.
+- Mikrofon langsung aktif. Ucapkan "buka WhatsApp", "buka Instagram", dst.
+- Aplikasi tujuan dibuka langsung ke layar utamanya, tanpa tombol.
+- Kembali ke Kate Suara lewat aplikasi terbaru (recent apps); mikrofon aktif lagi.
+
+CATATAN
+-------
+- Perlu aplikasi Google (layanan suara Google) dan koneksi internet.
+- Layar dijaga tetap menyala selama aplikasi terbuka.
+- Aplikasi harus tampil di layar untuk mendengarkan. Tidak berjalan saat layar mati.
+- Sebagian HP berbunyi "ting" tiap mikrofon mulai mendengarkan.
+- Agar tidak dimatikan sistem ColorOS: Setelan > Baterai > Kate Suara >
+  izinkan aktivitas latar belakang.
+
+BUILD TANPA MEMASANG APA PUN (GitHub Actions)
+---------------------------------------------
+1. Buat akun gratis di github.com, lalu "New repository" (boleh Private), mis. kate-suara.
+2. Klik "uploading an existing file". Buka folder suara-android yang sudah diekstrak,
+   pilih SEMUA isi di dalamnya (build.gradle.kts, settings.gradle.kts, folder app, dst),
+   seret ke halaman GitHub, lalu "Commit changes".
+   Pastikan build.gradle.kts berada di lapisan paling atas repository (bukan di dalam subfolder).
+3. Jika folder ".github" tidak ikut terunggah: "Add file" > "Create new file", isi nama
+   .github/workflows/build.yml lalu tempel isi file build.yml dari zip ini. Commit.
+4. Buka tab "Actions". Jika ada tombol "Run workflow", klik. Tunggu sekitar 3-6 menit sampai
+   tanda centang hijau.
+5. Klik hasil jalannya, turun ke bagian "Artifacts", unduh "KateSuara-apk" (berupa zip berisi
+   app-debug.apk). Ekstrak, pasang di HP.
+Jika berwarna merah: buka langkah yang gagal, salin pesan galatnya, kirim ke saya.
