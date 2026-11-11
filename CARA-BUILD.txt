@@ -53,3 +53,34 @@ BUILD TANPA MEMASANG APA PUN (GitHub Actions)
 5. Klik hasil jalannya, turun ke bagian "Artifacts", unduh "KateSuara-apk" (berupa zip berisi
    app-debug.apk). Ekstrak, pasang di HP.
 Jika berwarna merah: buka langkah yang gagal, salin pesan galatnya, kirim ke saya.
+
+CATATAN PEMBARUAN (suara balasan Kate)
+--------------------------------------
+- Unggah ulang isi folder ke GitHub (seret semua isinya, file lama otomatis tertimpa),
+  lalu tunggu build di tab Actions selesai.
+- UNINSTALL aplikasi Kate Suara yang lama dulu sebelum memasang yang baru
+  (tanda tangan debug tiap build berbeda, jadi tidak bisa menimpa).
+
+VERSI 2: HALLO KATE, FLOATING, DAN IKON BARU
+--------------------------------------------
+Yang berubah di sisi Android: suara kini dijalankan layanan latar depan (notifikasi "Kate Suara aktif"),
+sehingga Kate tetap mendengarkan saat aplikasi lain dibuka. Izin baru: notifikasi dan "Tampil di atas
+aplikasi lain" (untuk Floating).
+
+Urutan pemasangan:
+1. Upload index.php terbaru ke folder /voice/ di hosting.
+2. Seret SEMUA isi folder suara-android ke repository GitHub (timpa), Commit, tunggu centang hijau
+   di tab Actions, unduh KateSuara-apk.
+3. UNINSTALL Kate Suara yang lama, pasang yang baru (Play Protect: Install anyway).
+4. Buka Kate Suara, izinkan Mikrofon dan Notifikasi.
+5. Setting > nyalakan Floating > izinkan "Tampil di atas aplikasi lain" > kembali ke aplikasi.
+
+Agar tidak dimatikan sistem ColorOS (Oppo):
+- Setelan > Baterai > Kate Suara > izinkan aktivitas latar belakang / tidak dibatasi.
+- Setelan > Aplikasi > Kate Suara > izinkan Mulai otomatis.
+- Kunci kartu Kate Suara di daftar aplikasi terbaru.
+
+Cara pakai: ucapkan "Hallo Kate", tunggu jawaban "Ya saya disini, silahkan berikan perintah",
+lalu ucapkan "buka WhatsApp". Boleh juga langsung "Hallo Kate, buka WhatsApp" atau "buka WhatsApp".
+Floating: ketuk bola = memanggil Kate, tekan lama = jeda/aktifkan mikrofon, seret = pindahkan.
+Tombol "Berhenti" di notifikasi mematikan Kate sepenuhnya.

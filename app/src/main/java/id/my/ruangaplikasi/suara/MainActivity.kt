@@ -7,13 +7,11 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import android.view.WindowManager
+import android.provider.Settings
 import android.webkit.JavascriptInterface
 import android.webkit.JsResult
 import android.webkit.WebChromeClient
@@ -21,43 +19,19 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
-import org.json.JSONArray
-import java.util.Locale
+import org.json.JSONObject
 
 class MainActivity : Activity() {
 
     private lateinit var web: WebView
-    private var recognizer: SpeechRecognizer? = null
     private val ui = Handler(Looper.getMainLooper())
-    private var tts: TextToSpeech? = null
-    private var ttsReady = false
+    private var pendingFloating = false
 
     // Alamat halaman suara Anda
     private val startUrl = "https://ruangaplikasi.my.id/voice/"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
-        // Suara balasan Kate (Text-to-Speech bawaan Android)
-        tts = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.setLanguage(Locale("id", "ID"))
-                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {}
-                    override fun onDone(utteranceId: String?) {
-                        js("window.onNativeSpoken&&window.onNativeSpoken()")
-                    }
-                    @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) {
-                        js("window.onNativeSpoken&&window.onNativeSpoken()")
-                    }
-                })
-                ttsReady = true
-            }
-        }
 
         web = WebView(this)
         setContentView(web)
@@ -71,6 +45,11 @@ class MainActivity : Activity() {
                 val url = request?.url?.toString() ?: return false
                 return handleUrl(url)
             }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                pushSettings()
+                pushStatus(VoiceHub.state, VoiceHub.text)
+            }
         }
         web.webChromeClient = object : WebChromeClient() {
             override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
@@ -83,13 +62,86 @@ class MainActivity : Activity() {
             }
         }
 
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+        requestNeededPermissions()
+        if (hasMic() && VoiceService.instance == null) {
+            VoiceService.start(this, true)
         }
         web.loadUrl(startUrl)
     }
 
-    // Tautan halaman sendiri dimuat di WebView; selain itu dibuka lewat Android (tanpa aturan sentuhan Chrome)
+    // ------------------------------------------------------------------ izin
+
+    private fun hasMic(): Boolean =
+        checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    private fun requestNeededPermissions() {
+        val need = ArrayList<String>()
+        if (!hasMic()) need.add(Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            need.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        if (need.isNotEmpty()) requestPermissions(need.toTypedArray(), 1)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (hasMic()) {
+            if (VoiceService.instance == null) VoiceService.start(this, true)
+        } else {
+            pushStatus("off", "Izin mikrofon ditolak. Aktifkan di Setelan > Aplikasi > Kate Suara > Izin.")
+        }
+    }
+
+    // ------------------------------------------------------------------ siklus hidup
+
+    override fun onStart() {
+        super.onStart()
+        VoiceHub.listener = { s, t -> ui.post { pushStatus(s, t) } }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        VoiceHub.activityVisible = true
+        VoiceService.instance?.refreshOverlay()
+        if (pendingFloating && Prefs.canOverlay(this)) {
+            pendingFloating = false
+            Prefs.setBool(this, "floating", true)
+            VoiceService.instance?.onSettingsChanged()
+        } else if (pendingFloating) {
+            pendingFloating = false
+        }
+        pushSettings()
+        pushStatus(VoiceHub.state, VoiceHub.text)
+    }
+
+    override fun onPause() {
+        VoiceHub.activityVisible = false
+        VoiceService.instance?.refreshOverlay()
+        super.onPause()
+    }
+
+    override fun onStop() {
+        VoiceHub.listener = null
+        super.onStop()
+    }
+
+    // ------------------------------------------------------------------ halaman web
+
+    private fun js(code: String) {
+        ui.post { web.evaluateJavascript(code, null) }
+    }
+
+    private fun pushStatus(state: String, text: String) {
+        js("window.onNativeStatus&&window.onNativeStatus(" + JSONObject.quote(state) + "," + JSONObject.quote(text) + ")")
+    }
+
+    private fun pushSettings() {
+        js("window.onNativeSettings&&window.onNativeSettings(" + Prefs.json(this) + ")")
+    }
+
+    // Tautan halaman sendiri dimuat di WebView; selain itu dibuka lewat Android
     private fun handleUrl(url: String): Boolean {
         val host = Uri.parse(url).host ?: ""
         val isWeb = url.startsWith("http://") || url.startsWith("https://")
@@ -115,85 +167,84 @@ class MainActivity : Activity() {
         return true
     }
 
-    private fun js(code: String) {
-        ui.post { web.evaluateJavascript(code, null) }
-    }
-
-    // ---------- Pengenalan suara (native Android) ----------
-
-    private fun startSpeech() {
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
-            return
-        }
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            js("window.onNativeError&&window.onNativeError(5)")
-            return
-        }
-        stopSpeech()
-        val r = SpeechRecognizer.createSpeechRecognizer(this)
-        recognizer = r
-        r.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {
-                js("window.onNativeState&&window.onNativeState(true)")
-            }
-            override fun onResults(results: Bundle?) {
-                val list = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) ?: arrayListOf()
-                js("window.onNativeResult&&window.onNativeResult(" + JSONArray(list).toString() + ")")
-                js("window.onNativeState&&window.onNativeState(false)")
-            }
-            override fun onError(error: Int) {
-                js("window.onNativeError&&window.onNativeError($error)")
-            }
-            override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
-            override fun onPartialResults(partialResults: Bundle?) {}
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
-        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "id-ID")
-        i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-        i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-        r.startListening(i)
-    }
-
-    private fun stopSpeech() {
-        try {
-            recognizer?.cancel()
-            recognizer?.destroy()
-        } catch (e: Exception) {
-        }
-        recognizer = null
-    }
-
-    // ---------- Jembatan ke halaman web (window.Android) ----------
+    // ------------------------------------------------------------------ jembatan ke halaman web (window.Android)
 
     inner class Bridge {
-        @JavascriptInterface
-        fun startListening() {
-            ui.post { startSpeech() }
-        }
 
         @JavascriptInterface
-        fun speak(text: String) {
+        fun getSettings(): String = Prefs.json(this@MainActivity)
+
+        @JavascriptInterface
+        fun setSetting(key: String, value: Boolean) {
+            if (key != "auto" && key != "talk" && key != "loop") return
+            Prefs.setBool(this@MainActivity, key, value)
+            ui.post { VoiceService.instance?.onSettingsChanged() }
+        }
+
+        /** Mengaktifkan/mematikan bola floating. Mengembalikan true bila langsung berlaku. */
+        @JavascriptInterface
+        fun setFloating(value: Boolean): Boolean {
+            if (!value) {
+                Prefs.setBool(this@MainActivity, "floating", false)
+                ui.post { VoiceService.instance?.onSettingsChanged() }
+                return true
+            }
+            if (Prefs.canOverlay(this@MainActivity)) {
+                Prefs.setBool(this@MainActivity, "floating", true)
+                ui.post { VoiceService.instance?.onSettingsChanged() }
+                return true
+            }
             ui.post {
-                if (ttsReady) {
-                    tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "kate")
+                pendingFloating = true
+                try {
+                    val i = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + packageName)
+                    )
+                    startActivity(i)
+                } catch (e: Exception) {
+                    pendingFloating = false
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Buka Setelan > Aplikasi > Kate Suara > Tampil di atas aplikasi lain",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+            return false
+        }
+
+        /** Daftar aplikasi buatan pengguna (JSON) untuk dikenali layanan suara. */
+        @JavascriptInterface
+        fun setApps(json: String) {
+            Prefs.setApps(this@MainActivity, json)
+            ui.post { VoiceService.instance?.reloadApps() }
+        }
+
+        /** Dipanggil halaman saat dibuka: pastikan layanan suara berjalan. */
+        @JavascriptInterface
+        fun start() {
+            ui.post {
+                if (hasMic() && VoiceService.instance == null) VoiceService.start(this@MainActivity, false)
+            }
+        }
+
+        /** Bola di halaman ditekan: sama seperti mengucapkan "Hallo Kate". */
+        @JavascriptInterface
+        fun wake() {
+            ui.post {
+                val s = VoiceService.instance
+                if (s != null) {
+                    s.wakeNow()
+                } else if (hasMic()) {
+                    VoiceService.start(this@MainActivity, true)
                 } else {
-                    js("window.onNativeSpoken&&window.onNativeSpoken()")
+                    requestNeededPermissions()
                 }
             }
         }
 
-        @JavascriptInterface
-        fun stopListening() {
-            ui.post { stopSpeech() }
-        }
-
-        // Membuka layar utama aplikasi lewat nama paket
+        // Pembukaan manual dari daftar aplikasi
         @JavascriptInterface
         fun openApp(pkg: String): Boolean {
             val i = packageManager.getLaunchIntentForPackage(pkg) ?: return false
@@ -207,12 +258,10 @@ class MainActivity : Activity() {
             return true
         }
 
-        // Membuka layar sistem (kamera, pengaturan) lewat action
         @JavascriptInterface
         fun openAction(action: String): Boolean {
             val i = Intent(action)
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            if (i.resolveActivity(packageManager) == null) return false
             ui.post {
                 try {
                     startActivity(i)
@@ -223,30 +272,8 @@ class MainActivity : Activity() {
         }
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            js("window.onNativeResume&&window.onNativeResume()")
-        } else {
-            js("window.onNativeError&&window.onNativeError(9)")
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        js("window.onNativeResume&&window.onNativeResume()")
-    }
-
-    override fun onPause() {
-        super.onPause()
-        stopSpeech()
-        js("window.onNativePause&&window.onNativePause()")
-    }
-
     override fun onDestroy() {
-        stopSpeech()
-        tts?.stop()
-        tts?.shutdown()
+        VoiceHub.listener = null
         super.onDestroy()
     }
 }
