@@ -84,3 +84,12 @@ Cara pakai: ucapkan "Hallo Kate", tunggu jawaban "Ya saya disini, silahkan berik
 lalu ucapkan "buka WhatsApp". Boleh juga langsung "Hallo Kate, buka WhatsApp" atau "buka WhatsApp".
 Floating: ketuk bola = memanggil Kate, tekan lama = jeda/aktifkan mikrofon, seret = pindahkan.
 Tombol "Berhenti" di notifikasi mematikan Kate sepenuhnya.
+
+IZIN FLOATING DITOLAK ("App was denied access") DAN PEMBUKAAN DARI HOME SCREEN
+-----------------------------------------------------------------------------
+Android 13+ memblokir izin sensitif untuk aplikasi yang dipasang dari APK (Restricted settings).
+1. Setelan > Aplikasi > Kate Suara > titik tiga di kanan atas > "Izinkan pengaturan terbatas".
+   (Menu ini baru muncul setelah izin pernah dicoba dinyalakan sekali.)
+2. Buka Kate Suara > Setting > nyalakan Floating > izinkan "Tampil di atas aplikasi lain".
+Tanpa izin ini Android hanya mengizinkan membuka aplikasi sekitar 10 detik setelah Kate tampil.
+Jika tetap diblokir, Kate memunculkan notifikasi "Ketuk untuk membuka ..." sebagai cadangan.

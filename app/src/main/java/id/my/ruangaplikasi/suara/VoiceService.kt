@@ -36,6 +36,7 @@ import kotlin.math.min
 /** Status yang dibaca halaman web: state = off | idle | listening | command | speaking | paused */
 object VoiceHub {
     @Volatile var activityVisible = false
+    @Volatile var lastVisibleAt = 0L
     @Volatile var state = "off"
     @Volatile var text = ""
     @Volatile var listener: ((String, String) -> Unit)? = null
@@ -52,6 +53,8 @@ class VoiceService : Service() {
         const val ACT_STOP = "id.my.ruangaplikasi.suara.STOP"
         private const val CHANNEL = "kate_voice"
         private const val NOTIF_ID = 71
+        private const val CHANNEL_OPEN = "kate_open"
+        private const val NOTIF_OPEN_ID = 72
         private const val HINT = "Ucapkan \"Hallo Kate\""
         private const val TAP_HINT = "Ketuk bola, lalu ucapkan perintah"
         private const val CMD_HINT = "Silakan berikan perintah…"
@@ -457,25 +460,37 @@ class VoiceService : Service() {
             setState("idle", "Buka otomatis dimatikan di Setting.")
             return
         }
-        say("Baik, membuka " + app.name) {
+        val line = if (isBgBlocked()) {
+            "Ketuk notifikasi untuk membuka " + app.name
+        } else {
+            "Baik, membuka " + app.name
+        }
+        say(line) {
             if (!openEntry(app)) say(app.name + " belum terpasang di HP ini.")
         }
     }
 
-    private fun openEntry(app: AppEntry): Boolean {
+    /**
+     * Android melarang aplikasi di latar belakang membuka aplikasi lain, kecuali ada jendela
+     * aplikasi yang tampil, bola floating (izin "Tampil di atas aplikasi lain"), atau baru saja
+     * dibuka (jeda sekitar 10 detik). Di luar itu pembukaan diganti notifikasi yang bisa diketuk.
+     */
+    private fun isBgBlocked(): Boolean =
+        !VoiceHub.activityVisible && orb == null &&
+            System.currentTimeMillis() - VoiceHub.lastVisibleAt > 8000L
+
+    private fun buildIntent(app: AppEntry): Intent? {
         try {
             val act = app.action
             if (act != null) {
                 val i = Intent(act)
                 i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(i)
-                return true
+                return i
             }
             for (p in app.pkgs) {
                 val i = packageManager.getLaunchIntentForPackage(p) ?: continue
                 i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                startActivity(i)
-                return true
+                return i
             }
             val u = app.url
             if (u != null) {
@@ -486,12 +501,48 @@ class VoiceService : Service() {
                 }
                 val i = Intent(action, Uri.parse(u))
                 i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(i)
-                return true
+                return i
             }
         } catch (e: Exception) {
         }
-        return false
+        return null
+    }
+
+    private fun openEntry(app: AppEntry): Boolean {
+        val i = buildIntent(app) ?: return false
+        if (isBgBlocked()) {
+            notifyOpen(app, i)
+            return true
+        }
+        return try {
+            startActivity(i)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun notifyOpen(app: AppEntry, i: Intent) {
+        try {
+            val nm = getSystemService(NotificationManager::class.java)
+            if (Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(
+                    NotificationChannel(CHANNEL_OPEN, "Buka aplikasi", NotificationManager.IMPORTANCE_HIGH)
+                )
+            }
+            val pi = PendingIntent.getActivity(
+                this, 2, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CHANNEL_OPEN) else Notification.Builder(this)
+            b.setSmallIcon(R.drawable.ic_stat)
+            b.setContentTitle("Buka " + app.name)
+            b.setContentText("Ketuk untuk membuka " + app.name)
+            b.setContentIntent(pi)
+            b.setAutoCancel(true)
+            if (Build.VERSION.SDK_INT >= 26) b.setTimeoutAfter(20000L)
+            nm.notify(NOTIF_OPEN_ID, b.build())
+        } catch (e: Exception) {
+        }
     }
 
     // ------------------------------------------------------------------ bola floating

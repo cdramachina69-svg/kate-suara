@@ -116,7 +116,51 @@ class MainActivity : Activity() {
         pushStatus(VoiceHub.state, VoiceHub.text)
     }
 
+    private fun showOverlayHelp() {
+        AlertDialog.Builder(this)
+            .setTitle("Izin Floating")
+            .setMessage(
+                "Ketuk Lanjut, lalu nyalakan \"Tampil di atas aplikasi lain\" untuk Kate Suara.\n\n" +
+                    "Jika muncul pesan \"App was denied access\" (akses ditolak), Android membatasi aplikasi " +
+                    "yang dipasang dari APK. Caranya:\n" +
+                    "1. Ketuk Info Aplikasi.\n" +
+                    "2. Ketuk titik tiga di kanan atas.\n" +
+                    "3. Pilih \"Izinkan pengaturan terbatas\" (Allow restricted settings).\n" +
+                    "4. Kembali ke Kate Suara, lalu nyalakan Floating lagi."
+            )
+            .setPositiveButton("Lanjut") { _, _ -> openOverlaySettings() }
+            .setNeutralButton("Info Aplikasi") { _, _ -> openAppInfo() }
+            .setNegativeButton("Batal", null)
+            .show()
+    }
+
+    private fun openOverlaySettings() {
+        pendingFloating = true
+        try {
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName))
+            )
+        } catch (e: Exception) {
+            pendingFloating = false
+            Toast.makeText(
+                this,
+                "Buka Setelan > Aplikasi > Kate Suara > Tampil di atas aplikasi lain",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun openAppInfo() {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + packageName))
+            )
+        } catch (e: Exception) {
+        }
+    }
+
     override fun onPause() {
+        VoiceHub.lastVisibleAt = System.currentTimeMillis()
         VoiceHub.activityVisible = false
         VoiceService.instance?.refreshOverlay()
         super.onPause()
@@ -194,23 +238,7 @@ class MainActivity : Activity() {
                 ui.post { VoiceService.instance?.onSettingsChanged() }
                 return true
             }
-            ui.post {
-                pendingFloating = true
-                try {
-                    val i = Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:" + packageName)
-                    )
-                    startActivity(i)
-                } catch (e: Exception) {
-                    pendingFloating = false
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Buka Setelan > Aplikasi > Kate Suara > Tampil di atas aplikasi lain",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
+            ui.post { showOverlayHelp() }
             return false
         }
 
