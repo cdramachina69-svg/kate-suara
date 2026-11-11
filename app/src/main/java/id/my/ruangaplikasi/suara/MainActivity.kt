@@ -21,13 +21,18 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import org.json.JSONArray
+import java.util.Locale
 
 class MainActivity : Activity() {
 
     private lateinit var web: WebView
     private var recognizer: SpeechRecognizer? = null
     private val ui = Handler(Looper.getMainLooper())
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
 
     // Alamat halaman suara Anda
     private val startUrl = "https://ruangaplikasi.my.id/voice/"
@@ -35,6 +40,24 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // Suara balasan Kate (Text-to-Speech bawaan Android)
+        tts = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                tts?.setLanguage(Locale("id", "ID"))
+                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {}
+                    override fun onDone(utteranceId: String?) {
+                        js("window.onNativeSpoken&&window.onNativeSpoken()")
+                    }
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        js("window.onNativeSpoken&&window.onNativeSpoken()")
+                    }
+                })
+                ttsReady = true
+            }
+        }
 
         web = WebView(this)
         setContentView(web)
@@ -155,6 +178,17 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun speak(text: String) {
+            ui.post {
+                if (ttsReady) {
+                    tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "kate")
+                } else {
+                    js("window.onNativeSpoken&&window.onNativeSpoken()")
+                }
+            }
+        }
+
+        @JavascriptInterface
         fun stopListening() {
             ui.post { stopSpeech() }
         }
@@ -211,6 +245,8 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         stopSpeech()
+        tts?.stop()
+        tts?.shutdown()
         super.onDestroy()
     }
 }
