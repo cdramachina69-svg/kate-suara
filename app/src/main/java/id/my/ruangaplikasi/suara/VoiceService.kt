@@ -12,6 +12,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.graphics.drawable.Icon
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -90,6 +91,36 @@ class VoiceService : Service() {
 
     private var wm: WindowManager? = null
     private var orb: OrbView? = null
+
+    // Menahan bunyi "ting" bawaan layanan suara Google saat mikrofon mulai mendengarkan
+    private val mutedStreams = ArrayList<Int>()
+    private val unmuteRun = Runnable { beepUnmute() }
+
+    private fun beepMute() {
+        if (mutedStreams.isNotEmpty()) return
+        val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        for (s in intArrayOf(AudioManager.STREAM_NOTIFICATION, AudioManager.STREAM_SYSTEM)) {
+            try {
+                if (am.isStreamMute(s)) continue
+                am.adjustStreamVolume(s, AudioManager.ADJUST_MUTE, 0)
+                mutedStreams.add(s)
+            } catch (e: Exception) {
+            }
+        }
+    }
+
+    private fun beepUnmute() {
+        ui.removeCallbacks(unmuteRun)
+        if (mutedStreams.isEmpty()) return
+        val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        for (s in mutedStreams) {
+            try {
+                am?.adjustStreamVolume(s, AudioManager.ADJUST_UNMUTE, 0)
+            } catch (e: Exception) {
+            }
+        }
+        mutedStreams.clear()
+    }
 
     private val restartRun = Runnable { startListening() }
     private val watchdog = Runnable {
@@ -319,6 +350,9 @@ class VoiceService : Service() {
         listening = true
         ui.removeCallbacks(watchdog)
         ui.postDelayed(watchdog, 20000)
+        beepMute()
+        ui.removeCallbacks(unmuteRun)
+        ui.postDelayed(unmuteRun, 1300)
         try {
             r.startListening(i)
         } catch (e: Exception) {
@@ -449,7 +483,7 @@ class VoiceService : Service() {
                 if (answer == null) {
                     say("Maaf, AI sedang tidak tersedia. Coba lagi nanti.")
                 } else {
-                    say(answer) { commandUntil = System.currentTimeMillis() + 10000L }
+                    say(answer) { commandUntil = System.currentTimeMillis() + 25000L }
                 }
             }
         }
@@ -680,6 +714,7 @@ class VoiceService : Service() {
     private fun shutdown() {
         running = false
         ui.removeCallbacksAndMessages(null)
+        beepUnmute()
         destroyRec()
         try {
             tts?.stop()
@@ -699,6 +734,7 @@ class VoiceService : Service() {
         if (running) {
             running = false
             ui.removeCallbacksAndMessages(null)
+            beepUnmute()
             destroyRec()
             try {
                 tts?.shutdown()
