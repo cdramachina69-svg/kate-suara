@@ -77,6 +77,7 @@ class VoiceService : Service() {
     private var rec: SpeechRecognizer? = null
     private var listening = false
     private var speaking = false
+    private var thinking = false
     private var paused = false
     private var commandUntil = 0L
     private var errCount = 0
@@ -216,7 +217,7 @@ class VoiceService : Service() {
     private fun inCommand(): Boolean = System.currentTimeMillis() < commandUntil
 
     private fun shouldListen(): Boolean =
-        running && !paused && !speaking && (Prefs.loop(this) || inCommand())
+        running && !paused && !speaking && !thinking && (Prefs.loop(this) || inCommand())
 
     // ------------------------------------------------------------------ suara balasan (TTS)
 
@@ -270,7 +271,7 @@ class VoiceService : Service() {
         curUtt = id
         curDone = done
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
-        ui.postDelayed({ finishSpeak(id) }, 9000)
+        ui.postDelayed({ finishSpeak(id) }, maxOf(9000L, 3000L + text.length * 90L))
     }
 
     private fun finishSpeak(id: String) {
@@ -284,7 +285,7 @@ class VoiceService : Service() {
     }
 
     private fun afterTurn() {
-        if (!running) return
+        if (!running || thinking) return
         if (inCommand()) setState("command", CMD_HINT) else setState("idle", idleText())
         resumeListening()
     }
@@ -393,6 +394,7 @@ class VoiceService : Service() {
         var wakeSeen = false
         var found: AppEntry? = null
         var rest = ""
+        var restRaw = ""
         for (c in list) {
             val w = Brain.stripWake(c)
             if (w.found) wakeSeen = true
@@ -402,7 +404,10 @@ class VoiceService : Service() {
                 found = app
                 break
             }
-            if (w.found && rest.isEmpty()) rest = Brain.norm(w.rest)
+            if (w.found && rest.isEmpty()) {
+                rest = Brain.norm(w.rest)
+                restRaw = w.rest.trim()
+            }
         }
         when {
             found != null -> {
@@ -414,15 +419,38 @@ class VoiceService : Service() {
                     wakeReply()
                 } else {
                     commandUntil = 0L
-                    say("Maaf, saya belum mengenali aplikasi itu.")
+                    askOrUnknown(restRaw)
                 }
             }
             inCmd -> {
                 commandUntil = 0L
-                say("Maaf, saya belum mengenali aplikasi itu.")
+                askOrUnknown(list[0].trim())
             }
             else -> {
                 // percakapan biasa di sekitar HP: diabaikan
+            }
+        }
+    }
+
+    /** Perintah "buka ..." yang tidak dikenal dijawab maaf; selain itu dianggap pertanyaan untuk AI. */
+    private fun askOrUnknown(text: String) {
+        if (!Prefs.ai(this) || text.isBlank() || Brain.hasVerb(text)) {
+            say("Maaf, saya belum mengenali aplikasi itu.")
+            return
+        }
+        thinking = true
+        stopListening()
+        setState("speaking", "Kate sedang berpikir…")
+        val mode = Prefs.aiMode(this)
+        AiClient.ask(text, mode) { answer ->
+            ui.post {
+                thinking = false
+                if (!running) return@post
+                if (answer == null) {
+                    say("Maaf, AI sedang tidak tersedia. Coba lagi nanti.")
+                } else {
+                    say(answer) { commandUntil = System.currentTimeMillis() + 10000L }
+                }
             }
         }
     }

@@ -220,9 +220,16 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun setSetting(key: String, value: Boolean) {
-            if (key != "auto" && key != "talk" && key != "loop") return
+            if (key != "auto" && key != "talk" && key != "loop" && key != "ai") return
             Prefs.setBool(this@MainActivity, key, value)
             ui.post { VoiceService.instance?.onSettingsChanged() }
+        }
+
+        /** Pilihan AI: auto | groq | gemini */
+        @JavascriptInterface
+        fun setAiMode(mode: String) {
+            if (mode != "auto" && mode != "groq" && mode != "gemini") return
+            Prefs.setAiMode(this@MainActivity, mode)
         }
 
         /** Mengaktifkan/mematikan bola floating. Mengembalikan true bila langsung berlaku. */

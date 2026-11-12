@@ -16,6 +16,11 @@ object Prefs {
     fun talk(c: Context) = sp(c).getBoolean("talk", true)
     fun loop(c: Context) = sp(c).getBoolean("loop", true)
     fun floating(c: Context) = sp(c).getBoolean("floating", false)
+    fun ai(c: Context) = sp(c).getBoolean("ai", true)
+    fun aiMode(c: Context): String = sp(c).getString("aiMode", "auto") ?: "auto"
+    fun setAiMode(c: Context, m: String) {
+        sp(c).edit().putString("aiMode", m).apply()
+    }
 
     fun setBool(c: Context, key: String, v: Boolean) {
         sp(c).edit().putBoolean(key, v).apply()
@@ -41,6 +46,8 @@ object Prefs {
         o.put("talk", talk(c))
         o.put("loop", loop(c))
         o.put("floating", floating(c) && canOverlay(c))
+        o.put("ai", ai(c))
+        o.put("aiMode", aiMode(c))
         o.put("overlay", canOverlay(c))
         return o.toString()
     }
