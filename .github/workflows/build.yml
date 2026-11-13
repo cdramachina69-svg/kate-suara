@@ -24,9 +24,9 @@ jobs:
       - name: Siapkan kunci tanda tangan
         env:
           KS_B64: ${{ secrets.KATE_KEYSTORE_B64 }}
-          SP_RAW: ${{ secrets.KATE_STORE_PASS }}
-          KP_RAW: ${{ secrets.KATE_KEY_PASS }}
-          KA_RAW: ${{ secrets.KATE_KEY_ALIAS }}
+          SP_RAW: f2115fd3d004b9108296cd67
+          KP_RAW: f2115fd3d004b9108296cd67
+          KA_RAW: kate
         run: |
           KS=""
           if [ -f KATE_KEYSTORE_B64.txt ]; then
