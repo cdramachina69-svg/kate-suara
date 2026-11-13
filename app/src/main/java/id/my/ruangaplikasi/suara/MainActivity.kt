@@ -19,13 +19,17 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import org.json.JSONObject
+import java.io.File
 
 class MainActivity : Activity() {
 
     private lateinit var web: WebView
     private val ui = Handler(Looper.getMainLooper())
     private var pendingFloating = false
+    private var pendingApk: File? = null
+    private var dlDialog: AlertDialog? = null
 
     // Alamat halaman suara Anda
     private val startUrl = "https://ruangaplikasi.my.id/voice/"
@@ -67,6 +71,7 @@ class MainActivity : Activity() {
             VoiceService.start(this, true)
         }
         web.loadUrl(startUrl)
+        checkUpdate(false)
     }
 
     // ------------------------------------------------------------------ izin
@@ -114,6 +119,100 @@ class MainActivity : Activity() {
         }
         pushSettings()
         pushStatus(VoiceHub.state, VoiceHub.text)
+        val apk = pendingApk
+        if (apk != null && canInstallApk()) {
+            pendingApk = null
+            installApk(apk)
+        }
+    }
+
+    // ------------------------------------------------------------------ pembaruan aplikasi
+
+    private fun canInstallApk(): Boolean =
+        Build.VERSION.SDK_INT < 26 || packageManager.canRequestPackageInstalls()
+
+    /** manual = true: dari tombol "Cek update", memberi tahu bila sudah terbaru atau gagal. */
+    private fun checkUpdate(manual: Boolean) {
+        UpdateManager.check(this) { info, ok ->
+            ui.post {
+                if (isFinishing) return@post
+                if (info != null) {
+                    showUpdateDialog(info)
+                } else if (manual) {
+                    Toast.makeText(
+                        this,
+                        if (ok) "Aplikasi sudah versi terbaru" else "Tidak bisa memeriksa pembaruan. Periksa internet.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun showUpdateDialog(info: UpdateManager.Info) {
+        val note = if (info.note.isNotBlank()) "\n\n" + info.note else ""
+        AlertDialog.Builder(this)
+            .setTitle("Versi baru tersedia")
+            .setMessage("Kate Suara " + info.name + note + "\n\nPerbarui sekarang?")
+            .setPositiveButton("Update") { _, _ -> startDownload(info) }
+            .setNegativeButton("Nanti", null)
+            .show()
+    }
+
+    private fun startDownload(info: UpdateManager.Info) {
+        dlDialog?.dismiss()
+        dlDialog = AlertDialog.Builder(this)
+            .setTitle("Memperbarui")
+            .setMessage("Mengunduh… 0%")
+            .setCancelable(false)
+            .show()
+        UpdateManager.download(this, info, { p ->
+            ui.post { dlDialog?.setMessage("Mengunduh… $p%") }
+        }) { file ->
+            ui.post {
+                dlDialog?.dismiss()
+                dlDialog = null
+                if (file == null) {
+                    Toast.makeText(this, "Gagal mengunduh pembaruan. Coba lagi nanti.", Toast.LENGTH_LONG).show()
+                } else if (!isFinishing) {
+                    installApk(file)
+                }
+            }
+        }
+    }
+
+    private fun installApk(file: File) {
+        if (!canInstallApk()) {
+            pendingApk = file
+            AlertDialog.Builder(this)
+                .setTitle("Izin pemasangan")
+                .setMessage(
+                    "Agar bisa memperbarui, izinkan Kate Suara memasang aplikasi. " +
+                        "Ketuk Lanjut, nyalakan \"Izinkan dari sumber ini\", lalu kembali ke Kate Suara."
+                )
+                .setPositiveButton("Lanjut") { _, _ ->
+                    try {
+                        startActivity(
+                            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + packageName))
+                        )
+                    } catch (e: Exception) {
+                        pendingApk = null
+                        Toast.makeText(this, "Buka Setelan > Aplikasi > Kate Suara > Pasang aplikasi tidak dikenal", Toast.LENGTH_LONG).show()
+                    }
+                }
+                .setNegativeButton("Batal") { _, _ -> pendingApk = null }
+                .show()
+            return
+        }
+        try {
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+            val i = Intent(Intent.ACTION_VIEW)
+            i.setDataAndType(uri, "application/vnd.android.package-archive")
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivity(i)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Gagal membuka pemasang pembaruan", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun showOverlayHelp() {
@@ -217,6 +316,14 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun getSettings(): String = Prefs.json(this@MainActivity)
+
+        @JavascriptInterface
+        fun getVersion(): String = UpdateManager.currentName(this@MainActivity)
+
+        @JavascriptInterface
+        fun checkUpdate() {
+            ui.post { this@MainActivity.checkUpdate(true) }
+        }
 
         @JavascriptInterface
         fun setSetting(key: String, value: Boolean) {
