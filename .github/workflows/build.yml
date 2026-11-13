@@ -24,6 +24,9 @@ jobs:
       - name: Siapkan kunci tanda tangan
         env:
           KS_B64: ${{ secrets.KATE_KEYSTORE_B64 }}
+          SP_RAW: ${{ secrets.KATE_STORE_PASS }}
+          KP_RAW: ${{ secrets.KATE_KEY_PASS }}
+          KA_RAW: ${{ secrets.KATE_KEY_ALIAS }}
         run: |
           KS=""
           if [ -f KATE_KEYSTORE_B64.txt ]; then
@@ -36,18 +39,30 @@ jobs:
           if [ -n "$KS" ]; then
             echo "Panjang isi kunci: ${#KS} karakter (seharusnya 3504)"
             printf '%s' "$KS" | tr -d ' \r\n\t"' | base64 -d > "$RUNNER_TEMP/kate.jks"
+            SP="$(printf '%s' "$SP_RAW" | tr -d ' \r\n\t"')"
+            KP="$(printf '%s' "$KP_RAW" | tr -d ' \r\n\t"')"
+            KA="$(printf '%s' "$KA_RAW" | tr -d ' \r\n\t"')"
+            echo "Panjang KATE_STORE_PASS: ${#SP} (seharusnya 24)"
+            echo "Panjang KATE_KEY_PASS: ${#KP} (seharusnya 24)"
+            echo "Panjang KATE_KEY_ALIAS: ${#KA} (seharusnya 4)"
+            echo "Sidik KATE_STORE_PASS: $(printf '%s' "$SP" | sha256sum | cut -c1-8) (seharusnya 15e2c369)"
+            if keytool -list -keystore "$RUNNER_TEMP/kate.jks" -storepass "$SP" >/dev/null 2>&1; then
+              echo "Cek kata sandi kunci: BENAR"
+            else
+              echo "Cek kata sandi kunci: SALAH"
+            fi
             echo "KATE_KEYSTORE=$RUNNER_TEMP/kate.jks" >> "$GITHUB_ENV"
+            echo "KATE_STORE_PASS=$SP" >> "$GITHUB_ENV"
+            echo "KATE_KEY_PASS=$KP" >> "$GITHUB_ENV"
+            echo "KATE_KEY_ALIAS=$KA" >> "$GITHUB_ENV"
             echo "Kunci tetap dipakai."
           else
             echo "Kunci belum ada: memakai tanda tangan debug biasa."
           fi
 
       - name: Build APK
-        env:
-          KATE_STORE_PASS: ${{ secrets.KATE_STORE_PASS }}
-          KATE_KEY_ALIAS: ${{ secrets.KATE_KEY_ALIAS }}
-          KATE_KEY_PASS: ${{ secrets.KATE_KEY_PASS }}
         run: gradle assembleDebug --no-daemon
+
       - uses: actions/upload-artifact@v4
         with:
           name: KateSuara-apk
