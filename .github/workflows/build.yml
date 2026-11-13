@@ -20,18 +20,26 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      # Memakai kunci tanda tangan tetap bila Secrets sudah diisi. Bila belum, tanda tangan debug biasa.
+      # Memakai kunci tanda tangan tetap bila tersedia. Bila belum, tanda tangan debug biasa.
       - name: Siapkan kunci tanda tangan
         env:
           KS_B64: ${{ secrets.KATE_KEYSTORE_B64 }}
         run: |
-          if [ -n "$KS_B64" ]; then
-            echo "Panjang isi secret KATE_KEYSTORE_B64: ${#KS_B64} karakter (seharusnya 3504)"
-            printf '%s' "$KS_B64" | tr -d ' \r\n\t"' | base64 -d > "$RUNNER_TEMP/kate.jks"
+          KS=""
+          if [ -f KATE_KEYSTORE_B64.txt ]; then
+            KS="$(cat KATE_KEYSTORE_B64.txt)"
+            echo "Kunci dibaca dari file KATE_KEYSTORE_B64.txt di repository."
+          elif [ -n "$KS_B64" ]; then
+            KS="$KS_B64"
+            echo "Kunci dibaca dari secret KATE_KEYSTORE_B64."
+          fi
+          if [ -n "$KS" ]; then
+            echo "Panjang isi kunci: ${#KS} karakter (seharusnya 3504)"
+            printf '%s' "$KS" | tr -d ' \r\n\t"' | base64 -d > "$RUNNER_TEMP/kate.jks"
             echo "KATE_KEYSTORE=$RUNNER_TEMP/kate.jks" >> "$GITHUB_ENV"
             echo "Kunci tetap dipakai."
           else
-            echo "Secrets kunci belum ada: memakai tanda tangan debug biasa."
+            echo "Kunci belum ada: memakai tanda tangan debug biasa."
           fi
 
       - name: Build APK
@@ -40,7 +48,6 @@ jobs:
           KATE_KEY_ALIAS: ${{ secrets.KATE_KEY_ALIAS }}
           KATE_KEY_PASS: ${{ secrets.KATE_KEY_PASS }}
         run: gradle assembleDebug --no-daemon
-
       - uses: actions/upload-artifact@v4
         with:
           name: KateSuara-apk
