@@ -20,7 +20,24 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Build debug APK
+      # Memakai kunci tanda tangan tetap bila Secrets sudah diisi. Bila belum, tanda tangan debug biasa.
+      - name: Siapkan kunci tanda tangan
+        env:
+          KS_B64: ${{ secrets.KATE_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/kate.jks"
+            echo "KATE_KEYSTORE=$RUNNER_TEMP/kate.jks" >> "$GITHUB_ENV"
+            echo "Kunci tetap dipakai."
+          else
+            echo "Secrets kunci belum ada: memakai tanda tangan debug biasa."
+          fi
+
+      - name: Build APK
+        env:
+          KATE_STORE_PASS: ${{ secrets.KATE_STORE_PASS }}
+          KATE_KEY_ALIAS: ${{ secrets.KATE_KEY_ALIAS }}
+          KATE_KEY_PASS: ${{ secrets.KATE_KEY_PASS }}
         run: gradle assembleDebug --no-daemon
 
       - uses: actions/upload-artifact@v4
