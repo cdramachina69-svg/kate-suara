@@ -24,6 +24,13 @@ class OrbView(ctx: Context) : View(ctx) {
             invalidate()
         }
 
+    /** false saat layar mati: animasi berhenti supaya hemat baterai. */
+    var active: Boolean = true
+        set(value) {
+            field = value
+            if (value) invalidate()
+        }
+
     private val density = ctx.resources.displayMetrics.density
     private val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -127,8 +134,9 @@ class OrbView(ctx: Context) : View(ctx) {
             2 -> 0.16f
             else -> 0.12f
         }
-        if (mode != 0 || kotlin.math.abs(target - amp) > 0.01f) {
-            postInvalidateDelayed(33)
+        if (active && (mode != 0 || kotlin.math.abs(target - amp) > 0.01f)) {
+            // siaga (tenang) digambar lebih jarang agar hemat baterai
+            postInvalidateDelayed(if (mode == 1) 66L else 33L)
         }
     }
 }

@@ -16,6 +16,7 @@ object Prefs {
     fun talk(c: Context) = sp(c).getBoolean("talk", true)
     fun loop(c: Context) = sp(c).getBoolean("loop", true)
     fun floating(c: Context) = sp(c).getBoolean("floating", false)
+    fun screenOnly(c: Context) = sp(c).getBoolean("screenOnly", true)
     fun ai(c: Context) = sp(c).getBoolean("ai", true)
     fun aiMode(c: Context): String = sp(c).getString("aiMode", "auto") ?: "auto"
     fun setAiMode(c: Context, m: String) {
@@ -46,6 +47,7 @@ object Prefs {
         o.put("talk", talk(c))
         o.put("loop", loop(c))
         o.put("floating", floating(c) && canOverlay(c))
+        o.put("screenOnly", screenOnly(c))
         o.put("ai", ai(c))
         o.put("aiMode", aiMode(c))
         o.put("overlay", canOverlay(c))

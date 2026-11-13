@@ -6,19 +6,21 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.IntentFilter
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.graphics.drawable.Icon
-import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -92,34 +94,53 @@ class VoiceService : Service() {
     private var wm: WindowManager? = null
     private var orb: OrbView? = null
 
-    // Menahan bunyi "ting" bawaan layanan suara Google saat mikrofon mulai mendengarkan
-    private val mutedStreams = ArrayList<Int>()
-    private val unmuteRun = Runnable { beepUnmute() }
-
-    private fun beepMute() {
-        if (mutedStreams.isNotEmpty()) return
-        val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
-        for (s in intArrayOf(AudioManager.STREAM_NOTIFICATION, AudioManager.STREAM_SYSTEM)) {
-            try {
-                if (am.isStreamMute(s)) continue
-                am.adjustStreamVolume(s, AudioManager.ADJUST_MUTE, 0)
-                mutedStreams.add(s)
-            } catch (e: Exception) {
+    // Layar menyala/mati: bila "dengar hanya saat layar menyala" aktif, mikrofon istirahat saat layar mati
+    private var screenReg = false
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (!running) return
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                orb?.active = false
+                if (Prefs.screenOnly(this@VoiceService)) {
+                    stopListening()
+                    if (!speaking && !thinking) setState("idle", "Layar mati, Kate istirahat.")
+                }
+            } else if (intent?.action == Intent.ACTION_SCREEN_ON) {
+                orb?.active = true
+                if (!speaking && !thinking) setState("idle", idleText())
+                resumeListening()
             }
         }
     }
 
-    private fun beepUnmute() {
-        ui.removeCallbacks(unmuteRun)
-        if (mutedStreams.isEmpty()) return
-        val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-        for (s in mutedStreams) {
-            try {
-                am?.adjustStreamVolume(s, AudioManager.ADJUST_UNMUTE, 0)
-            } catch (e: Exception) {
+    private fun isScreenOn(): Boolean {
+        val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return true
+        return pm.isInteractive
+    }
+
+    private fun registerScreen() {
+        if (screenReg) return
+        val f = IntentFilter()
+        f.addAction(Intent.ACTION_SCREEN_ON)
+        f.addAction(Intent.ACTION_SCREEN_OFF)
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(screenReceiver, f, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(screenReceiver, f)
             }
+            screenReg = true
+        } catch (e: Exception) {
         }
-        mutedStreams.clear()
+    }
+
+    private fun unregisterScreen() {
+        if (!screenReg) return
+        screenReg = false
+        try {
+            unregisterReceiver(screenReceiver)
+        } catch (e: Exception) {
+        }
     }
 
     private val restartRun = Runnable { startListening() }
@@ -148,6 +169,7 @@ class VoiceService : Service() {
             }
             running = true
             instance = this
+            registerScreen()
             wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
             reloadApps()
             refreshOverlay()
@@ -248,7 +270,8 @@ class VoiceService : Service() {
     private fun inCommand(): Boolean = System.currentTimeMillis() < commandUntil
 
     private fun shouldListen(): Boolean =
-        running && !paused && !speaking && !thinking && (Prefs.loop(this) || inCommand())
+        running && !paused && !speaking && !thinking &&
+            (!Prefs.screenOnly(this) || isScreenOn()) && (Prefs.loop(this) || inCommand())
 
     // ------------------------------------------------------------------ suara balasan (TTS)
 
@@ -350,9 +373,6 @@ class VoiceService : Service() {
         listening = true
         ui.removeCallbacks(watchdog)
         ui.postDelayed(watchdog, 20000)
-        beepMute()
-        ui.removeCallbacks(unmuteRun)
-        ui.postDelayed(unmuteRun, 1300)
         try {
             r.startListening(i)
         } catch (e: Exception) {
@@ -635,6 +655,7 @@ class VoiceService : Service() {
         lp.y = if (sy >= 0) sy else (d.heightPixels * 0.4f).toInt()
         val view = OrbView(this)
         view.mode = orbMode()
+        view.active = isScreenOn()
         view.setOnTouchListener(makeTouch(lp, manager))
         try {
             manager.addView(view, lp)
@@ -714,7 +735,7 @@ class VoiceService : Service() {
     private fun shutdown() {
         running = false
         ui.removeCallbacksAndMessages(null)
-        beepUnmute()
+        unregisterScreen()
         destroyRec()
         try {
             tts?.stop()
@@ -734,7 +755,7 @@ class VoiceService : Service() {
         if (running) {
             running = false
             ui.removeCallbacksAndMessages(null)
-            beepUnmute()
+            unregisterScreen()
             destroyRec()
             try {
                 tts?.shutdown()

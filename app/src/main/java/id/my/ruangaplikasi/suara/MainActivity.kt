@@ -220,7 +220,7 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun setSetting(key: String, value: Boolean) {
-            if (key != "auto" && key != "talk" && key != "loop" && key != "ai") return
+            if (key != "auto" && key != "talk" && key != "loop" && key != "ai" && key != "screenOnly") return
             Prefs.setBool(this@MainActivity, key, value)
             ui.post { VoiceService.instance?.onSettingsChanged() }
         }
