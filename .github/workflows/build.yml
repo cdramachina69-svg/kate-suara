@@ -26,7 +26,8 @@ jobs:
           KS_B64: ${{ secrets.KATE_KEYSTORE_B64 }}
         run: |
           if [ -n "$KS_B64" ]; then
-            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/kate.jks"
+            echo "Panjang isi secret KATE_KEYSTORE_B64: ${#KS_B64} karakter (seharusnya 3504)"
+            printf '%s' "$KS_B64" | tr -d ' \r\n\t"' | base64 -d > "$RUNNER_TEMP/kate.jks"
             echo "KATE_KEYSTORE=$RUNNER_TEMP/kate.jks" >> "$GITHUB_ENV"
             echo "Kunci tetap dipakai."
           else
